@@ -1,0 +1,28 @@
+{
+  "name": "Remodex Light",
+  "type": "light",
+  "colors": {
+    "editor.background": "#F5F8FD",
+    "editor.foreground": "#101828",
+    "editorCursor.foreground": "#2E6CDA",
+    "sideBar.background": "#EEF3FA",
+    "sideBar.foreground": "#4A5870",
+    "sideBarTitle.foreground": "#101828",
+    "activityBar.background": "#E8EEF7",
+    "activityBar.activeBorder": "#2E6CDA",
+    "activityBarBadge.background": "#2E6CDA",
+    "editorGroup.border": "#CBD6E5",
+    "panel.border": "#D8E0EC",
+    "panel.background": "#F0F4FA",
+    "button.background": "#2E6CDA",
+    "textLink.foreground": "#2E6CDA",
+    "input.background": "#FFFFFF",
+    "input.border": "#C8D2E2",
+    "input.foreground": "#111827",
+    "input.placeholderForeground": "#7A879D",
+    "gitDecoration.addedResourceForeground": "#0F9F6E",
+    "gitDecoration.deletedResourceForeground": "#D94D65",
+    "gitDecoration.untrackedResourceForeground": "#0F9F6E"
+  },
+  "tokenColors": []
+}

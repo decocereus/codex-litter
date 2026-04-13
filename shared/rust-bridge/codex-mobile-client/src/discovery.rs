@@ -140,7 +140,7 @@ pub enum MdnsServiceEvent {
     },
 }
 
-/// Platform-provided mDNS browser (iOS = NWBrowser, Android = NsdManager).
+/// Platform-provided mDNS browser.
 ///
 /// The Rust layer coordinates results; actual browsing is delegated to the
 /// platform because reliable mDNS requires OS-level APIs.
@@ -681,7 +681,7 @@ impl DiscoveryService {
     async fn collect_browser_mdns_seeds(&self) -> Vec<MdnsSeed> {
         let mut seeds = Vec::new();
 
-        for service_type in &["_codex._tcp.", "_ssh._tcp."] {
+        for service_type in &["_codex._tcp.", "_ssh._tcp.", "_litter-bridge._tcp."] {
             let mut rx = self.mdns_browser.browse(service_type);
             let deadline = tokio::time::sleep(Duration::from_secs(5));
             tokio::pin!(deadline);
@@ -723,6 +723,7 @@ impl DiscoveryService {
             let display = clean_hostname(&seed.name);
             let is_codex_service = seed.service_type.starts_with("_codex.");
             let is_ssh_service = seed.service_type.starts_with("_ssh.");
+            let is_bridge_service = seed.service_type.starts_with("_litter-bridge.");
 
             let mut codex_port = if is_codex_service { seed.port } else { None };
             let ssh_port = if is_ssh_service {
@@ -754,12 +755,15 @@ impl DiscoveryService {
                 }
             }
 
-            if codex_port.is_none() && ssh_port.is_none() {
+            if codex_port.is_none() && ssh_port.is_none() && !is_bridge_service {
                 continue;
             }
 
             let mut metadata = seed.txt;
             metadata.insert("service_type".to_string(), seed.service_type);
+            if is_bridge_service {
+                metadata.insert("bridge_transport".to_string(), "local_pairing".to_string());
+            }
             if let Some(sp) = ssh_port {
                 if let Some(banner) = grab_ssh_banner(&host, sp, self.config.probe_timeout).await {
                     if let Some(os) = parse_ssh_banner_os(&banner) {
@@ -768,7 +772,11 @@ impl DiscoveryService {
                     metadata.insert("ssh_banner".to_string(), banner);
                 }
             }
-            let port = primary_port(codex_port, ssh_port);
+            let port = if is_bridge_service {
+                seed.port.unwrap_or_default()
+            } else {
+                primary_port(codex_port, ssh_port)
+            };
             if port == 0 {
                 continue;
             }
@@ -795,7 +803,7 @@ impl DiscoveryService {
         results
     }
 
-    /// ARP table scan (Linux/Android: /proc/net/arp, macOS: `arp -a`).
+    /// ARP table scan (`/proc/net/arp` on Unix-like hosts, `arp -a` on macOS).
     async fn scan_arp(&self) -> Vec<DiscoveredServer> {
         if !self.config.enable_arp_scan {
             return Vec::new();
@@ -1124,11 +1132,11 @@ fn parse_ipv4_hint(value: &str) -> Option<Ipv4Addr> {
 /// Fetch the list of Tailscale peers from the local API.
 ///
 /// Talks raw HTTP/1.1 over a TCP connection to the Tailscale local API daemon.
-/// On macOS this is at 127.0.0.1:41112, on Linux/Android at 100.100.100.100:80.
+/// On macOS this is at 127.0.0.1:41112, and some other hosts expose it at 100.100.100.100:80.
 async fn fetch_tailscale_peers() -> Result<Vec<(String, String)>, String> {
     // Try both known endpoints.
     let endpoints = [
-        ("100.100.100.100", 80), // Linux / Android
+        ("100.100.100.100", 80),
         ("127.0.0.1", 41112),    // macOS
     ];
 
@@ -1228,12 +1236,12 @@ async fn fetch_tailscale_status(host: &str, port: u16) -> Result<Vec<(String, St
 
 /// Parse ARP table to find candidate IPs.
 ///
-/// On Linux/Android reads `/proc/net/arp`.
+/// Reads `/proc/net/arp` when available.
 /// On macOS, runs `arp -a` and parses the output.
 fn parse_arp_table() -> Vec<String> {
     let mut candidates = Vec::new();
 
-    // Try /proc/net/arp first (Linux/Android).
+    // Try /proc/net/arp first when the host provides it.
     if let Ok(content) = std::fs::read_to_string("/proc/net/arp") {
         for line in content.lines().skip(1) {
             let parts: Vec<&str> = line.split_whitespace().collect();

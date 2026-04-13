@@ -18,7 +18,7 @@
 - **meson** + **ninja** (required by `webrtc-audio-processing-sys`):
 
   ```bash
-  brew install meson
+  brew install meson ninja
   ```
 
 - **xcodegen** (for regenerating `Litter.xcodeproj`):
@@ -29,7 +29,7 @@
 
 ## Connect Your Mac to Litter Over SSH
 
-Use this flow to make Codex sessions from your Mac visible in the iOS/Android app.
+Use this flow to make Codex sessions from your Mac visible in the iOS app.
 
 1. Enable SSH on the Mac.
 
@@ -76,7 +76,6 @@ Current local patch set (applied by `sync-codex.sh`):
 
 Additional patches (not auto-applied):
 
-- `patches/codex/android-vendored-openssl.patch`
 - `patches/codex/realtime-transcript-deltas.patch`
 
 Sync/apply (idempotent):
@@ -96,6 +95,24 @@ Pass `--recorded-gitlink` to reset the submodule to the commit recorded in the s
 
 ## Build and Run iOS
 
+For a fresh local machine, start with:
+
+```bash
+make ios-local-setup
+```
+
+That helper:
+- chooses a local `com.<identifier>.litter` bundle/app-group namespace
+- auto-detects the first Apple Development team in your keychain unless you override it
+- regenerates `apps/ios/Litter.xcodeproj`
+- downloads `ios_system` frameworks by default
+
+Override the defaults if needed:
+
+```bash
+IOS_LOCAL_IDENTIFIER=myname IOS_LOCAL_TEAM_ID=TEAMID1234 make ios-local-setup
+```
+
 Regenerate project if `apps/ios/project.yml` changed:
 
 ```bash
@@ -114,14 +131,12 @@ CLI build:
 xcodebuild -project apps/ios/Litter.xcodeproj -scheme Litter -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 
-## Build and Run Android
+## Fast Local iOS Build
 
-Prerequisites: Java 17, Android SDK + build tools for API 35, Gradle 8.x.
+For the smallest local footprint on a laptop with limited disk space:
 
 ```bash
-open -a "Android Studio" apps/android                                  # open in Android Studio
-cd apps/android && ./gradlew :app:testDebugUnitTest                    # run tests
-gradle -p apps/android :app:assembleOnDeviceDebug :app:assembleRemoteOnlyDebug  # build flavors
+CARGO_INCREMENTAL=0 RUSTFLAGS='-C debuginfo=0' make ios-device-fast
 ```
 
 ## TestFlight (iOS)

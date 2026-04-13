@@ -26,6 +26,7 @@
 ## Quick Start
 
 ```bash
+make ios-local-setup
 make ios-device-fast
 make ios-sim-fast
 ```
@@ -35,6 +36,8 @@ For device builds, a practical low-disk command is:
 ```bash
 CARGO_INCREMENTAL=0 RUSTFLAGS='-C debuginfo=0' make ios-build-device-fast
 ```
+
+`make ios-local-setup` auto-detects a local Apple Development team and switches the repo to a local `com.<you>.litter` bundle/app-group namespace before regenerating the Xcode project.
 
 See [AGENTS.md](AGENTS.md) for the canonical repository layout, architecture, and build workflow details.
 

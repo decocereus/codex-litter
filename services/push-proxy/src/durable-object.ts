@@ -2,7 +2,6 @@ import { sendSilentPush } from "./apns"
 import { Env, RegisterRequest } from "./types"
 
 interface StoredRegistration {
-  platform: "ios" | "android"
   pushToken: string
   apnsEnvironment: "production" | "sandbox"
   intervalSeconds: number
@@ -26,7 +25,6 @@ export class PushRegistration implements DurableObject {
     if (request.method === "PUT" && url.pathname === "/") {
       const body = (await request.json()) as RegisterRequest
       const reg: StoredRegistration = {
-        platform: body.platform,
         pushToken: body.pushToken,
         apnsEnvironment: body.apnsEnvironment ?? "production",
         intervalSeconds: body.intervalSeconds ?? 30,
@@ -60,14 +58,11 @@ export class PushRegistration implements DurableObject {
 
     reg.pushCount++
 
-    if (reg.platform === "ios") {
-      const result = await sendSilentPush(this.env, reg.pushToken, reg.apnsEnvironment)
-      if (result.gone) {
-        await this.state.storage.deleteAll()
-        return
-      }
+    const result = await sendSilentPush(this.env, reg.pushToken, reg.apnsEnvironment)
+    if (result.gone) {
+      await this.state.storage.deleteAll()
+      return
     }
-
     await this.state.storage.put("reg", reg)
     await this.state.storage.setAlarm(now + reg.intervalSeconds * 1000)
   }

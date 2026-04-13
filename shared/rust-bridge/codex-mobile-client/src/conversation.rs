@@ -1,8 +1,8 @@
 //! Conversation restoration / thread hydration.
 //!
 //! Converts upstream `Vec<Turn>` (from `thread/resume`, `thread/fork`, etc.)
-//! into `Vec<HydratedConversationItem>` — a flat, UI-ready model that both
-//! iOS and Android render directly via UniFFI.
+//! into `Vec<HydratedConversationItem>` — a flat, UI-ready model that the
+//! iOS app renders directly via UniFFI.
 
 use std::path::PathBuf;
 

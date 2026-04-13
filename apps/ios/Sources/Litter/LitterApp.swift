@@ -349,6 +349,25 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
 
+                if let banner = appRuntime.globalBanner {
+                    VStack {
+                        AppGlobalBannerView(
+                            banner: banner,
+                            onPrimaryAction: {
+                                appRuntime.performGlobalBannerPrimaryAction()
+                            },
+                            onDismiss: {
+                                appRuntime.dismissGlobalBanner()
+                            }
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.top, geometry.safeAreaInsets.top + 10)
+
+                        Spacer()
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
             }
             .ignoresSafeArea(.container)
             .task {
@@ -395,6 +414,7 @@ struct ContentView: View {
             SettingsView()
                 .environment(\.textScale, textScale)
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.88), value: appRuntime.globalBanner?.id)
     }
 }
 

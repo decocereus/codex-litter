@@ -1,7 +1,7 @@
-//! Shared mobile client library for iOS / Android.
+//! Shared mobile client library for iOS.
 //!
-//! This crate owns the single public UniFFI surface for mobile. Keep shared
-//! business logic here so Swift/Kotlin only compile one binding set.
+//! This crate owns the public UniFFI surface for the iOS app. Keep shared
+//! business logic here so Swift only compiles one binding set.
 
 #[cfg(target_os = "ios")]
 mod aec;
@@ -23,6 +23,7 @@ pub mod recorder;
 pub mod permissions;
 pub mod reconnect;
 pub mod remote_path;
+pub mod secure_bridge_proxy;
 pub mod session;
 pub mod ssh;
 pub mod store;

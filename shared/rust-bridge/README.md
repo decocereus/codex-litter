@@ -1,3 +1,3 @@
-# Rust Bridge (Planned)
+# Rust Bridge
 
-This directory will host shared Rust bridge crates consumed by both platforms.
+This directory contains the shared Rust mobile runtime and related crates used by the iOS app.

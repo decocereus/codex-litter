@@ -1,7 +1,7 @@
 //! Tool call message parser: markdown-structured system messages → typed tool cards.
 //!
 //! Parses `### [Title]` headers, metadata lines, code fences, and named sections
-//! into `ToolCallCard` structs for rendering on both platforms.
+//! into `ToolCallCard` structs for rendering in the iOS app.
 
 use regex::Regex;
 use serde::Deserialize;

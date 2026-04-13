@@ -42,6 +42,7 @@ struct DiscoveredServer: Identifiable, Hashable {
     let preferredCodexPort: UInt16?
     let os: String?
     let sshBanner: String?
+    let metadata: [String: String]
 
     init(
         id: String,
@@ -58,7 +59,8 @@ struct DiscoveredServer: Identifiable, Hashable {
         preferredConnectionMode: PreferredConnectionMode? = nil,
         preferredCodexPort: UInt16? = nil,
         os: String? = nil,
-        sshBanner: String? = nil
+        sshBanner: String? = nil,
+        metadata: [String: String] = [:]
     ) {
         let normalizedCodexPorts = Self.normalizedPorts(codexPorts, fallback: port)
         let resolvedPreferredMode = Self.resolvedPreferredConnectionMode(
@@ -90,10 +92,21 @@ struct DiscoveredServer: Identifiable, Hashable {
         self.preferredCodexPort = resolvedPreferredCodexPort
         self.os = os
         self.sshBanner = sshBanner
+        self.metadata = metadata
+    }
+
+    var isPairableMacBridge: Bool {
+        metadata["bridge_transport"] == "local_pairing"
+            || metadata["service_type"] == "_litter-bridge._tcp."
+            || (source == .bonjour
+                && port == 56609
+                && codexPorts.isEmpty
+                && sshPort == nil)
     }
 
     var connectionTarget: ConnectionTarget? {
         if source == .local { return .local }
+        if isPairableMacBridge { return nil }
         if let websocketURL, let url = URL(string: websocketURL) { return .remoteURL(url) }
         if preferredConnectionMode == .ssh {
             return nil
@@ -123,14 +136,17 @@ struct DiscoveredServer: Identifiable, Hashable {
     }
 
     var canConnectViaSSH: Bool {
-        sshPort != nil
+        if isPairableMacBridge { return false }
+        return sshPort != nil
     }
 
     var hasValidPreferredConnection: Bool {
-        preferredConnectionMode != nil
+        if isPairableMacBridge { return true }
+        return preferredConnectionMode != nil
     }
 
     var requiresConnectionChoice: Bool {
+        guard !isPairableMacBridge else { return false }
         guard source != .local, websocketURL == nil else { return false }
         guard preferredConnectionMode == nil else { return false }
         let directCount = availableDirectCodexPorts.count

@@ -1,7 +1,7 @@
 # Shared
 
-Cross-platform code and contracts.
+Shared runtime code, vendored dependencies, and contracts.
 
-- `rust-bridge/` for Rust bridge code used by iOS and Android.
-- `third_party/` for shared vendored dependencies (including Codex).
-- `protocol/` for shared JSON-RPC/protocol artifacts.
+- `rust-bridge/` contains the Rust mobile runtime used by the iOS app.
+- `third_party/` contains shared vendored dependencies, including Codex.
+- `protocol/` contains shared JSON-RPC/protocol artifacts.

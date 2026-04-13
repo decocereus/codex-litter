@@ -20,6 +20,7 @@ struct SettingsView: View {
     private var connectedServers: [HomeDashboardServer] {
         HomeDashboardSupport.sortedConnectedServers(
             from: appModel.snapshot?.servers ?? [],
+            sessions: appModel.snapshot?.sessionSummaries ?? [],
             activeServerId: appModel.snapshot?.activeThread?.serverId
         )
     }

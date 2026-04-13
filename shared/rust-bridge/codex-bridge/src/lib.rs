@@ -6,9 +6,6 @@ use std::path::PathBuf;
 mod ios_exec;
 pub mod voice_handoff;
 
-#[cfg(target_os = "android")]
-mod android_jni;
-
 // ===========================================================================
 // Platform initialization (called by UniFFI scaffolding on first use)
 // ===========================================================================
@@ -73,7 +70,6 @@ fn init_codex_home() {
     eprintln!("[codex-bridge] unable to initialize any writable CODEX_HOME location");
 }
 
-#[cfg(any(target_os = "ios", target_os = "android"))]
 pub(crate) fn init_tls_roots() {
     if let Some(existing) = std::env::var_os("SSL_CERT_FILE") {
         let existing_path = PathBuf::from(existing);
@@ -105,7 +101,7 @@ pub(crate) fn init_tls_roots() {
 }
 
 // ===========================================================================
-// Conversation hydration FFI (used by both platforms for standalone hydration)
+// Conversation hydration FFI used for standalone hydration.
 // ===========================================================================
 
 use codex_app_server_protocol::Turn;

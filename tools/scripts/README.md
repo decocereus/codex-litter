@@ -4,6 +4,7 @@ Shared iOS and desktop automation scripts live here.
 
 - `codex-app-driver.applescript`: launches `Codex.app`, opens a project root, creates a thread, and pastes/sends prompts through GUI scripting for desktop-side conversation automation.
 - `codex-desktop-controller.mjs`: launches or attaches to a remote-debugging-enabled `Codex.app` instance, then drives the real renderer UI through CDP so it can open projects, create threads, send prompts, wait for the turn to finish, and dump the visible transcript as JSON without macOS accessibility scripting.
+- `setup-ios-local.sh`: one-command local iOS setup. Detects a local Apple Development team, switches bundle/app-group IDs to `com.<you>.litter`, regenerates the Xcode project, and optionally downloads iOS support frameworks.
 - `switch-app-identity.sh`: switches local iOS app IDs between `com.sigkitten.litter` and `com.<your-identifier>.litter`, with optional `--team-id` for iOS signing. It updates `apps/ios/project.yml` and regenerates `apps/ios/Litter.xcodeproj` via `xcodegen`.
 
 Common `codex-desktop-controller.mjs` flows:

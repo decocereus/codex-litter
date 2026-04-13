@@ -42,11 +42,18 @@ impl From<AppDiscoverySource> for DiscoverySource {
 }
 
 #[derive(uniffi::Record)]
+pub struct AppMdnsTxtRecord {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(uniffi::Record)]
 pub struct AppMdnsSeed {
     pub name: String,
     pub host: String,
     pub port: Option<u16>,
     pub service_type: String,
+    pub txt_records: Vec<AppMdnsTxtRecord>,
 }
 
 impl From<AppMdnsSeed> for MdnsSeed {
@@ -56,7 +63,11 @@ impl From<AppMdnsSeed> for MdnsSeed {
             host: value.host,
             port: value.port,
             service_type: value.service_type,
-            txt: HashMap::new(),
+            txt: value
+                .txt_records
+                .into_iter()
+                .map(|record| (record.key, record.value))
+                .collect(),
         }
     }
 }
@@ -74,12 +85,18 @@ pub struct AppDiscoveredServer {
     pub reachable: bool,
     pub os: Option<String>,
     pub ssh_banner: Option<String>,
+    pub metadata_json: Option<String>,
 }
 
 impl From<DiscoveredServer> for AppDiscoveredServer {
     fn from(value: DiscoveredServer) -> Self {
         let os = value.metadata.get("os").cloned();
         let ssh_banner = value.metadata.get("ssh_banner").cloned();
+        let metadata_json = if value.metadata.is_empty() {
+            None
+        } else {
+            serde_json::to_string(&value.metadata).ok()
+        };
         Self {
             id: value.id,
             display_name: value.display_name,
@@ -92,13 +109,18 @@ impl From<DiscoveredServer> for AppDiscoveredServer {
             reachable: value.reachable,
             os,
             ssh_banner,
+            metadata_json,
         }
     }
 }
 
 impl From<AppDiscoveredServer> for DiscoveredServer {
     fn from(value: AppDiscoveredServer) -> Self {
-        let mut metadata = HashMap::new();
+        let mut metadata = value
+            .metadata_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str::<HashMap<String, String>>(json).ok())
+            .unwrap_or_default();
         if let Some(os) = value.os {
             metadata.insert("os".to_string(), os);
         }

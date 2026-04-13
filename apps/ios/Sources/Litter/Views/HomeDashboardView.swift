@@ -142,7 +142,7 @@ struct HomeDashboardView: View {
                 emptyStateCard(
                     title: "No recent sessions",
                     message: connectedServers.isEmpty
-                        ? "Connect a server to start your first session."
+                        ? "Connect your Mac to start your first session."
                         : "Start a new session on one of your connected servers."
                 )
             } else {
@@ -170,12 +170,12 @@ struct HomeDashboardView: View {
 
     private var connectedServersSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(title: "Servers", buttonTitle: "Connect Server", systemImage: "bolt.horizontal.circle", action: onConnectServer)
+            sectionHeader(title: "Projects", buttonTitle: "Connect Mac", systemImage: "desktopcomputer", action: onConnectServer)
 
             if connectedServers.isEmpty {
                 emptyStateCard(
-                    title: "No connected servers",
-                    message: "Use Connect Server to add a server and its sessions will appear here."
+                    title: "No connected projects",
+                    message: "Connect your Mac and its projects and chats will appear here."
                 )
             } else {
                 VStack(alignment: .leading, spacing: 10) {
@@ -290,7 +290,7 @@ struct HomeDashboardView: View {
     private func connectedServerRow(_ server: HomeDashboardServer) -> some View {
         SessionServerCardRow(
             icon: server.isLocal ? "iphone" : "server.rack",
-            title: server.displayName,
+            title: server.projectName ?? server.displayName,
             subtitle: HomeDashboardSupport.serverSubtitle(for: server),
             trailing: .statusLabel(server.statusLabel, server.statusColor)
         )

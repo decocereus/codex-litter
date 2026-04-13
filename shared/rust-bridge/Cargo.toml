@@ -4,6 +4,8 @@ members = [
     "codex-debug-cli",
     "codex-ios-audio",
     "codex-ipc",
+    "litter-mac-bridge",
+    "litter-mac-bridge-core",
     "codex-mobile-client",
     "uniffi-bindgen",
     "codex-tui",
@@ -48,13 +50,6 @@ strip = true
 lto = true
 
 [profile.mobile-release]
-inherits = "release"
-lto = false
-strip = true
-debug = 0
-codegen-units = 16
-
-[profile.android-dev]
 inherits = "release"
 lto = false
 strip = true

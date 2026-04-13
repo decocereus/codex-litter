@@ -48,6 +48,7 @@ final class HomeDashboardModel {
             let appSnapshot = appModel.snapshot
             let nextConnectedServers = HomeDashboardSupport.sortedConnectedServers(
                 from: appSnapshot?.servers ?? [],
+                sessions: appSnapshot?.sessionSummaries ?? [],
                 activeServerId: appSnapshot?.activeThread?.serverId
             )
             let nextRecentSessions = HomeDashboardSupport.recentConnectedSessions(

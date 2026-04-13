@@ -1,5 +1,7 @@
 import Foundation
 import Observation
+import UIKit
+import UserNotifications
 
 @MainActor
 @Observable
@@ -12,11 +14,15 @@ final class AppRuntimeController {
     @ObservationIgnored private let liveActivities = TurnLiveActivityController()
     @ObservationIgnored private var pendingLiveActivitySync = false
     @ObservationIgnored private var lastLiveActivitySyncTime: CFAbsoluteTime = 0
+    @ObservationIgnored private var dismissedBannerIDs: Set<String> = []
+    private(set) var globalBanner: AppGlobalBanner?
 
     func bind(appModel: AppModel, voiceRuntime: VoiceRuntimeController) {
         self.appModel = appModel
         self.voiceRuntime = voiceRuntime
-        lifecycle.requestNotificationPermissionIfNeeded()
+        Task { [weak self] in
+            await self?.refreshGlobalBanner()
+        }
     }
 
     func setDevicePushToken(_ token: Data) {
@@ -106,6 +112,9 @@ final class AppRuntimeController {
             hasActiveVoiceSession: voiceRuntime?.activeVoiceSession != nil,
             liveActivities: liveActivities
         )
+        Task { [weak self] in
+            await self?.refreshGlobalBanner()
+        }
     }
 
     func handleBackgroundPush() async {
@@ -116,5 +125,66 @@ final class AppRuntimeController {
             liveActivities: liveActivities
         )
         LLog.info("push", "runtime finished background push")
+    }
+
+    func dismissGlobalBanner() {
+        guard let globalBanner else { return }
+        dismissedBannerIDs.insert(globalBanner.id)
+        self.globalBanner = nil
+    }
+
+    func performGlobalBannerPrimaryAction() {
+        guard let globalBanner else { return }
+        switch globalBanner {
+        case .notificationPermission(let banner):
+            switch banner.kind {
+            case .prompt:
+                Task { [weak self] in
+                    await self?.requestNotificationPermissionFromBanner()
+                }
+            case .denied:
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    private func requestNotificationPermissionFromBanner() async {
+        LLog.info("push", "requesting notification permission from global banner")
+        do {
+            _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+        } catch {
+            LLog.error("push", "notification permission request failed", error: error)
+        }
+        UIApplication.shared.registerForRemoteNotifications()
+        dismissedBannerIDs.remove("notification-permission-prompt")
+        await refreshGlobalBanner()
+    }
+
+    private func refreshGlobalBanner() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        let nextBanner = notificationPermissionBanner(for: settings.authorizationStatus)
+        if let nextBanner {
+            if dismissedBannerIDs.contains(nextBanner.id) {
+                globalBanner = nil
+            } else {
+                globalBanner = nextBanner
+            }
+        } else {
+            dismissedBannerIDs.remove("notification-permission-prompt")
+            dismissedBannerIDs.remove("notification-permission-denied")
+            globalBanner = nil
+        }
+    }
+
+    private func notificationPermissionBanner(for status: UNAuthorizationStatus) -> AppGlobalBanner? {
+        switch status {
+        case .notDetermined:
+            return .notificationPermission(NotificationPermissionBanner(kind: .prompt))
+        case .denied:
+            return .notificationPermission(NotificationPermissionBanner(kind: .denied))
+        default:
+            return nil
+        }
     }
 }

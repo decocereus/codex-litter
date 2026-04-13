@@ -72,6 +72,22 @@
     "foregroundHex": "#0d0d0d"
   },
   {
+    "slug": "remodex-dark",
+    "name": "Remodex Dark",
+    "type": "dark",
+    "accentHex": "#5EA2FF",
+    "backgroundHex": "#090B10",
+    "foregroundHex": "#F4F7FF"
+  },
+  {
+    "slug": "remodex-light",
+    "name": "Remodex Light",
+    "type": "light",
+    "accentHex": "#2E6CDA",
+    "backgroundHex": "#F5F8FD",
+    "foregroundHex": "#101828"
+  },
+  {
     "slug": "dark-plus-B1yOZ-Hy",
     "name": "dark-plus",
     "type": "dark",

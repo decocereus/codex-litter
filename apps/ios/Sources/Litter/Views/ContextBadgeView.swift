@@ -4,9 +4,11 @@ struct ContextBadgeView: View, Equatable {
     let percent: Int
     let tint: Color
 
-    private let cornerRadius: CGFloat = 3.5
-    private let strokeWidth: CGFloat = 1.2
-    private let inset: CGFloat = 1.5
+    private var cornerRadius: CGFloat { LitterTheme.usesRemodexChrome ? 5 : 3.5 }
+    private var strokeWidth: CGFloat { LitterTheme.usesRemodexChrome ? 1 : 1.2 }
+    private var inset: CGFloat { LitterTheme.usesRemodexChrome ? 1 : 1.5 }
+    private var width: CGFloat { LitterTheme.usesRemodexChrome ? 38 : 35 }
+    private var height: CGFloat { LitterTheme.usesRemodexChrome ? 18 : 16 }
 
     var body: some View {
         ZStack {
@@ -24,9 +26,9 @@ struct ContextBadgeView: View, Equatable {
             .padding(.vertical, inset + strokeWidth / 2)
 
             Text("\(percent)")
-                .font(LitterFont.monospaced(size: 9.5, weight: .heavy))
+                .font(LitterFont.monospaced(size: LitterTheme.usesRemodexChrome ? 10 : 9.5, weight: .heavy))
                 .foregroundColor(tint)
         }
-        .frame(width: 35, height: 16)
+        .frame(width: width, height: height)
     }
 }

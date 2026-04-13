@@ -456,9 +456,9 @@ struct RateLimitBadgeView: View, Equatable {
     }
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: LitterTheme.usesRemodexChrome ? 5 : 3) {
             Text(label)
-                .font(LitterFont.monospaced(size: 9.5, weight: .semibold))
+                .font(LitterFont.monospaced(size: LitterTheme.usesRemodexChrome ? 10 : 9.5, weight: .semibold))
                 .foregroundColor(LitterTheme.textSecondary)
             ContextBadgeView(percent: percent, tint: tint)
         }

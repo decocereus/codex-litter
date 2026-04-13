@@ -27,6 +27,11 @@ struct ThemeIndexEntry: Codable, Identifiable {
     var id: String { slug }
 }
 
+enum ThemeChromeStyle: String {
+    case classic
+    case remodex
+}
+
 // MARK: - Resolved theme (app-ready hex values)
 
 struct ResolvedTheme {
@@ -51,12 +56,14 @@ struct ResolvedTheme {
     let warning: String
     let textOnAccent: String
     let codeBackground: String
+    let chromeStyle: ThemeChromeStyle
 
     init(slug: String, definition d: ThemeDefinition) {
         self.slug = slug
         self.name = d.name
         self.type = d.type
         let c = d.colors
+        self.chromeStyle = slug.hasPrefix("remodex-") ? .remodex : .classic
 
         let bg = c["editor.background"] ?? (d.type == .dark ? "#111111" : "#FFFFFF")
         let fg = c["editor.foreground"] ?? (d.type == .dark ? "#FFFFFF" : "#1A1A1A")

@@ -55,7 +55,7 @@ pub use self::thread_projection::{
     copy_thread_runtime_fields, reasoning_effort_from_string, reasoning_effort_string,
     thread_info_from_upstream_thread, thread_snapshot_from_upstream_thread_with_overrides,
 };
-/// Top-level entry point for platform code (iOS / Android).
+/// Top-level entry point for iOS platform code.
 ///
 /// Ties together server sessions, thread management, event processing,
 /// discovery, auth, caching, and voice handoff into a single facade.
@@ -803,7 +803,7 @@ impl MobileClient {
         let session = self.sessions_write().remove(server_id);
 
         if let Some(session) = session {
-            // Swift/Kotlin can call this from outside any Tokio runtime.
+            // Swift can call this from outside any Tokio runtime.
             self.app_store.remove_server(server_id);
             let inner = Arc::clone(&self.oauth_callback_tunnels);
             let server_id_owned = server_id.to_string();
@@ -1011,7 +1011,7 @@ impl MobileClient {
         // If the server has live IPC and the thread already exists in the store
         // with populated data, skip the RPC — IPC broadcasts are already keeping
         // the thread state up to date.  This is the "passive IPC open" path that
-        // was previously handled in platform code (Swift/Kotlin).
+        // was previously handled in platform code.
         if server_has_live_ipc(&self.app_store, server_id, &session) {
             let key = ThreadKey {
                 server_id: server_id.to_string(),

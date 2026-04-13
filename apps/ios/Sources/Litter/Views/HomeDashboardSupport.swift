@@ -24,6 +24,8 @@ struct HomeDashboardServer: Identifiable, Equatable {
     let sourceLabel: String
     let statusLabel: String
     let statusColor: Color
+    let projectName: String?
+    let latestThreadTitle: String?
 
     var deduplicationKey: String {
         if isLocal {
@@ -48,7 +50,9 @@ struct HomeDashboardServer: Identifiable, Equatable {
             lhs.hasIpc == rhs.hasIpc &&
             lhs.health == rhs.health &&
             lhs.sourceLabel == rhs.sourceLabel &&
-            lhs.statusLabel == rhs.statusLabel
+            lhs.statusLabel == rhs.statusLabel &&
+            lhs.projectName == rhs.projectName &&
+            lhs.latestThreadTitle == rhs.latestThreadTitle
     }
 }
 
@@ -81,14 +85,22 @@ enum HomeDashboardSupport {
 
     static func sortedConnectedServers(
         from servers: [AppServerSnapshot],
+        sessions: [AppSessionSummary] = [],
         activeServerId: String?
     ) -> [HomeDashboardServer] {
         var seenServerKeys: Set<String> = []
+        let sessionsByServer = Dictionary(grouping: sessions) { $0.key.serverId }
 
         return servers
             .filter { $0.health != .disconnected || $0.connectionProgress != nil }
             .map { server in
-                HomeDashboardServer(
+                let recentSessions = (sessionsByServer[server.serverId] ?? [])
+                    .sorted { ($0.updatedAt ?? 0) > ($1.updatedAt ?? 0) }
+                let primarySession = recentSessions.first
+                let projectName = primarySession.flatMap { workspaceLabel(for: $0.cwd) }
+                let latestThreadTitle = primarySession.map { sessionTitle(for: $0) }
+
+                return HomeDashboardServer(
                     id: server.serverId,
                     displayName: server.displayName,
                     host: server.host,
@@ -98,7 +110,9 @@ enum HomeDashboardSupport {
                     health: server.health,
                     sourceLabel: server.connectionModeLabel,
                     statusLabel: server.statusLabel,
-                    statusColor: server.statusColor
+                    statusColor: server.statusColor,
+                    projectName: projectName,
+                    latestThreadTitle: latestThreadTitle
                 )
             }
             .sorted { lhs, rhs in
@@ -121,11 +135,21 @@ enum HomeDashboardSupport {
     }
 
     static func serverSubtitle(for server: HomeDashboardServer) -> String {
-        if server.isLocal {
-            return "In-process server"
+        if let latestThreadTitle = server.latestThreadTitle,
+           !latestThreadTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return latestThreadTitle
         }
 
-        return "\(server.host):\(server.port) | \(server.sourceLabel)"
+        if let projectName = server.projectName,
+           !projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return projectName
+        }
+
+        if server.isLocal {
+            return "This iPhone"
+        }
+
+        return server.health == .connected ? "Ready to use" : server.statusLabel
     }
 
     static func workspaceLabel(for cwd: String) -> String? {

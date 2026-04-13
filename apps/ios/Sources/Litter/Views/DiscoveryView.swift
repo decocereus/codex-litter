@@ -22,9 +22,17 @@ struct DiscoveryView: View {
     @State private var connectError: String?
     @State private var renameTarget: DiscoveredServer?
     @State private var renameText = ""
+    @State private var pairingTarget: DiscoveredServer?
+    @State private var pairingCode = ""
+    @State private var pairingSuccessMessage: String?
+    @State private var manualPairingHost = ""
+    @State private var manualPairingCode = ""
+    @State private var showManualPairingAlert = false
+    @State private var showQRPairingSheet = false
     @Environment(AppState.self) private var appState
     private let autoStartDiscovery: Bool
     private let initialServers: [DiscoveredServer]
+    private let macPairingClient = MacPairingClient()
 
     init(
         onServerSelected: ((DiscoveredServer) -> Void)? = nil,
@@ -42,8 +50,12 @@ struct DiscoveryView: View {
         discovery.servers.filter { $0.source == .local }
     }
 
+    private var pairableMacBridges: [DiscoveredServer] {
+        discovery.servers.filter(\.isPairableMacBridge)
+    }
+
     private var networkServers: [DiscoveredServer] {
-        discovery.servers.filter { $0.source != .local }
+        discovery.servers.filter { $0.source != .local && !$0.isPairableMacBridge }
     }
 
     private func applyInitialServersIfNeeded() {
@@ -72,112 +84,84 @@ struct DiscoveryView: View {
     }
 
     var body: some View {
-        ZStack {
-            LitterTheme.backgroundGradient.ignoresSafeArea()
-            List {
-                serversSection
-                manualSection
-            }
-            .scrollContentBackground(.hidden)
-            .refreshable { refreshDiscovery() }
-            .accessibilityIdentifier("discovery.list")
-        }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { appState.showSettings = true } label: {
-                    Image(systemName: "gearshape")
-                        .foregroundColor(LitterTheme.textSecondary)
+        discoveryRoot
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { discoveryToolbar }
+            .onAppear { handleAppear() }
+            .onDisappear { handleDisappear() }
+            .sheet(item: $sshServer) { server in
+                SSHLoginSheet(server: server) { target in
+                    sshServer = nil
+                    Task { await connectToServer(server, targetOverride: target) }
                 }
             }
-            ToolbarItem(placement: .principal) {
-                BrandLogo(size: 44)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    refreshDiscovery()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .foregroundColor(LitterTheme.accent)
-                }
-                .accessibilityIdentifier("discovery.refreshButton")
-                .disabled(discovery.isScanning)
-            }
-        }
-        .onAppear { handleAppear() }
-        .onDisappear { handleDisappear() }
-        .sheet(item: $sshServer) { server in
-            SSHLoginSheet(server: server) { target in
-                sshServer = nil
-                Task { await connectToServer(server, targetOverride: target) }
-            }
-        }
-        .confirmationDialog(
-            connectionChoiceServer.map { "Connect to \($0.name)" } ?? "Choose Connection",
-            isPresented: connectionChoicePresented,
-            titleVisibility: .visible
-        ) {
-            if let server = connectionChoiceServer {
-                ForEach(server.availableDirectCodexPorts, id: \.self) { port in
-                    Button("Use Codex (\(port))") {
-                        let preferredServer = server.withConnectionPreference(.directCodex, codexPort: port)
-                        connectionChoiceServer = nil
-                        Task { await connectToServer(preferredServer) }
-                    }
-                }
-                if server.canConnectViaSSH {
-                    Button("Connect via SSH") {
-                        let preferredServer = server.withConnectionPreference(.ssh)
-                        connectionChoiceServer = nil
-                        sshServer = preferredServer
-                    }
+            .confirmationDialog(
+                connectionChoiceServer.map { "Connect to \($0.name)" } ?? "Choose Connection",
+                isPresented: connectionChoicePresented,
+                titleVisibility: .visible
+            ) {
+                connectionChoiceActions
+            } message: {
+                if let server = connectionChoiceServer {
+                    Text(connectionChoiceMessage(for: server))
                 }
             }
-            Button("Cancel", role: .cancel) {
-                connectionChoiceServer = nil
+            .sheet(isPresented: $showManualEntry) {
+                manualEntrySheet
             }
-        } message: {
-            if let server = connectionChoiceServer {
-                Text(connectionChoiceMessage(for: server))
+            .sheet(isPresented: $showQRPairingSheet) {
+                MacPairingScannerView(
+                    onScan: { payload in
+                        Task {
+                            await pairWithPayload(payload, displayName: "Litter Mac", host: nil, localPairingMode: "qr")
+                            showQRPairingSheet = false
+                        }
+                    },
+                    onClose: { showQRPairingSheet = false }
+                )
             }
-        }
-        .sheet(isPresented: $showManualEntry) {
-            manualEntrySheet
-        }
-        .onChange(of: showManualEntry) { _, isPresented in
-            guard !isPresented, let pendingSSHServer else { return }
-            self.pendingSSHServer = nil
-            self.sshServer = pendingSSHServer
-        }
-        .onChange(of: appModel.snapshot) { _, _ in
-            guard let pendingAutoNavigateServerId else { return }
-            guard let serverSnapshot = appModel.snapshot?.serverSnapshot(for: pendingAutoNavigateServerId) else {
-                return
+            .onChange(of: showManualEntry) { _, isPresented in
+                guard !isPresented, let pendingSSHServer else { return }
+                self.pendingSSHServer = nil
+                self.sshServer = pendingSSHServer
             }
-            if serverSnapshot.health == .connected {
-                self.pendingAutoNavigateServerId = nil
-                if let server = pendingAutoNavigateServer
-                    ?? discovery.servers.first(where: { $0.id == pendingAutoNavigateServerId }) {
-                    self.pendingAutoNavigateServer = nil
-                    navigateAfterConnect(server)
+            .onChange(of: appModel.snapshot) { _, _ in
+                handleSnapshotChange()
+            }
+            .alert("Connection Failed", isPresented: showConnectError, actions: {
+                Button("OK") { connectError = nil }
+            }, message: {
+                Text(connectError ?? "Unable to connect.")
+            })
+            .alert("Pair with Mac", isPresented: pairingAlertPresented) {
+                pairingAlertActions
+            } message: {
+                Text("Enter the pairing code shown on your Mac.")
+            }
+            .alert("Mac Paired", isPresented: pairingSuccessPresented) {
+                Button("OK", role: .cancel) { pairingSuccessMessage = nil }
+            } message: {
+                Text(pairingSuccessMessage ?? "")
+            }
+            .alert("Pair With Mac Code", isPresented: $showManualPairingAlert) {
+                TextField("Mac IP or hostname", text: $manualPairingHost)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                TextField("Pairing code", text: $manualPairingCode)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled(true)
+                Button("Cancel", role: .cancel) {
+                    manualPairingHost = ""
+                    manualPairingCode = ""
                 }
-            } else if serverSnapshot.health == .disconnected,
-                      let message = serverSnapshot.connectionProgress?.terminalMessage {
-                self.pendingAutoNavigateServerId = nil
-                self.pendingAutoNavigateServer = nil
-                connectError = message
+                Button("Pair") {
+                    Task { await pairWithMacCodeManually() }
+                }
+            } message: {
+                Text("Enter your Mac's local IP/hostname and the pairing code from the bridge.")
             }
-        }
-        .alert("Connection Failed", isPresented: showConnectError, actions: {
-            Button("OK") { connectError = nil }
-        }, message: {
-            Text(connectError ?? "Unable to connect.")
-        })
-        .alert("Rename Server", isPresented: Binding(
-            get: { renameTarget != nil },
-            set: { if !$0 { renameTarget = nil } }
-        )) {
+            .alert("Rename Server", isPresented: renameAlertPresented) {
             TextField("Name", text: $renameText)
             Button("Cancel", role: .cancel) { renameTarget = nil }
             Button("Save") {
@@ -197,7 +181,8 @@ struct DiscoveryView: View {
                         preferredConnectionMode: server.preferredConnectionMode,
                         preferredCodexPort: server.preferredCodexPort,
                         os: server.os,
-                        sshBanner: server.sshBanner
+                        sshBanner: server.sshBanner,
+                        metadata: server.metadata
                     ))
                     if let idx = discovery.servers.firstIndex(where: { $0.id == server.id }) {
                         discovery.servers[idx] = DiscoveredServer(
@@ -213,7 +198,8 @@ struct DiscoveryView: View {
                             preferredConnectionMode: server.preferredConnectionMode,
                             preferredCodexPort: server.preferredCodexPort,
                             os: server.os,
-                            sshBanner: server.sshBanner
+                            sshBanner: server.sshBanner,
+                            metadata: server.metadata
                         )
                     }
                 }
@@ -266,10 +252,172 @@ struct DiscoveryView: View {
         }
     }
 
+    private var discoveryRoot: some View {
+        ZStack {
+            LitterTheme.backgroundGradient.ignoresSafeArea()
+            List {
+                macPairingSection
+                serversSection
+                manualSection
+            }
+            .scrollContentBackground(.hidden)
+            .refreshable { refreshDiscovery() }
+            .accessibilityIdentifier("discovery.list")
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var discoveryToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { appState.showSettings = true } label: {
+                Image(systemName: "gearshape")
+                    .foregroundColor(LitterTheme.textSecondary)
+            }
+        }
+        ToolbarItem(placement: .principal) {
+            BrandLogo(size: 44)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                refreshDiscovery()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .foregroundColor(LitterTheme.accent)
+            }
+            .accessibilityIdentifier("discovery.refreshButton")
+            .disabled(discovery.isScanning)
+        }
+    }
+
+    @ViewBuilder
+    private var connectionChoiceActions: some View {
+        if let server = connectionChoiceServer {
+            ForEach(server.availableDirectCodexPorts, id: \.self) { port in
+                Button("Use Codex (\(port))") {
+                    let preferredServer = server.withConnectionPreference(.directCodex, codexPort: port)
+                    connectionChoiceServer = nil
+                    Task { await connectToServer(preferredServer) }
+                }
+            }
+            if server.canConnectViaSSH {
+                Button("Connect via SSH") {
+                    let preferredServer = server.withConnectionPreference(.ssh)
+                    connectionChoiceServer = nil
+                    sshServer = preferredServer
+                }
+            }
+        }
+        Button("Cancel", role: .cancel) {
+            connectionChoiceServer = nil
+        }
+    }
+
+    private var pairingAlertPresented: Binding<Bool> {
+        Binding(
+            get: { pairingTarget != nil },
+            set: { if !$0 { pairingTarget = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var pairingAlertActions: some View {
+        TextField("Pairing code", text: $pairingCode)
+            .textInputAutocapitalization(.characters)
+            .autocorrectionDisabled(true)
+        Button("Cancel", role: .cancel) {
+            pairingTarget = nil
+            pairingCode = ""
+        }
+        Button("Pair") {
+            guard let server = pairingTarget else { return }
+            Task {
+                await requestPairingPayload(for: server, code: pairingCode)
+                pairingTarget = nil
+                pairingCode = ""
+            }
+        }
+    }
+
+    private var pairingSuccessPresented: Binding<Bool> {
+        Binding(
+            get: { pairingSuccessMessage != nil },
+            set: { if !$0 { pairingSuccessMessage = nil } }
+        )
+    }
+
+    private var renameAlertPresented: Binding<Bool> {
+        Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )
+    }
+
+    private func handleSnapshotChange() {
+        guard let pendingAutoNavigateServerId else { return }
+        guard let serverSnapshot = appModel.snapshot?.serverSnapshot(for: pendingAutoNavigateServerId) else {
+            return
+        }
+        if serverSnapshot.health == .connected {
+            self.pendingAutoNavigateServerId = nil
+            if let server = pendingAutoNavigateServer
+                ?? discovery.servers.first(where: { $0.id == pendingAutoNavigateServerId }) {
+                self.pendingAutoNavigateServer = nil
+                navigateAfterConnect(server)
+            }
+        } else if serverSnapshot.health == .disconnected,
+                  let message = serverSnapshot.connectionProgress?.terminalMessage {
+            self.pendingAutoNavigateServerId = nil
+            self.pendingAutoNavigateServer = nil
+            connectError = message
+        }
+    }
+
     // MARK: - Sections
 
     private var allServers: [DiscoveredServer] {
         localServers + networkServers
+    }
+
+    private var macPairingSection: some View {
+        Group {
+            if !pairableMacBridges.isEmpty {
+                Section {
+                    ForEach(pairableMacBridges) { server in
+                        Button {
+                            Task { await startMacPairing(for: server) }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "laptopcomputer")
+                                    .foregroundColor(LitterTheme.accent)
+                                    .frame(width: 24)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(server.name)
+                                        .litterFont(.subheadline)
+                                        .foregroundColor(LitterTheme.textPrimary)
+                                    Text(macPairingSubtitle(for: server))
+                                        .litterFont(.caption)
+                                        .foregroundColor(LitterTheme.textSecondary)
+                                }
+                                Spacer()
+                                Text("Pair")
+                                    .litterFont(.caption2)
+                                    .foregroundColor(LitterTheme.accent)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(LitterTheme.accent.opacity(0.14))
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(connectingServer != nil || wakingServer != nil)
+                    }
+                } header: {
+                    Text("Nearby Macs")
+                        .foregroundColor(LitterTheme.textSecondary)
+                }
+                .listRowBackground(LitterTheme.surface.opacity(0.6))
+            }
+        }
     }
 
     private var serversSection: some View {
@@ -349,10 +497,36 @@ struct DiscoveryView: View {
 
     private var manualSection: some View {
         Section {
-                Button {
-                    manualConnectionMode = .ssh
-                    showManualEntry = true
-                } label: {
+            Button {
+                showQRPairingSheet = true
+            } label: {
+                HStack {
+                    Image(systemName: "qrcode.viewfinder")
+                        .foregroundColor(LitterTheme.accent)
+                    Text("Scan Mac QR")
+                        .litterFont(.subheadline)
+                        .foregroundColor(LitterTheme.accent)
+                }
+            }
+            .listRowBackground(LitterTheme.surface.opacity(0.6))
+
+            Button {
+                showManualPairingAlert = true
+            } label: {
+                HStack {
+                    Image(systemName: "link.badge.plus")
+                        .foregroundColor(LitterTheme.accent)
+                    Text("Pair With Mac Code")
+                        .litterFont(.subheadline)
+                        .foregroundColor(LitterTheme.accent)
+                }
+            }
+            .listRowBackground(LitterTheme.surface.opacity(0.6))
+
+            Button {
+                manualConnectionMode = .ssh
+                showManualEntry = true
+            } label: {
                 HStack {
                     Image(systemName: "plus.circle")
                         .foregroundColor(LitterTheme.accent)
@@ -431,11 +605,26 @@ struct DiscoveryView: View {
     }
 
     private func serverSubtitle(_ server: DiscoveredServer) -> String {
-        if server.source == .local { return "In-process server" }
+        if server.source == .local { return "This iPhone" }
+        if server.isPairableMacBridge {
+            return macPairingSubtitle(for: server)
+        }
         let snapshot = connectedSnapshot(for: server)
         if let progressDetail = snapshot?.connectionProgressDetail,
            !progressDetail.isEmpty {
             return progressDetail
+        }
+        if !DebugSettings.shared.enabled {
+            if server.hasCodexServer {
+                if let os = server.os, !os.isEmpty {
+                    return "\(os) ready to connect"
+                }
+                return "Ready to connect"
+            }
+            if server.canConnectViaSSH {
+                return "Can be set up over SSH"
+            }
+            return "Available on this network"
         }
         let displayHost = snapshot?.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? snapshot!.host
@@ -455,6 +644,11 @@ struct DiscoveryView: View {
             parts.append(" - ipc")
         }
         return parts.joined()
+    }
+
+    private func macPairingSubtitle(for server: DiscoveredServer) -> String {
+        let mode = server.metadata["pairing_mode"] ?? "code"
+        return mode == "auto" ? "Tap to pair" : "Requires code"
     }
 
     @ViewBuilder
@@ -492,6 +686,10 @@ struct DiscoveryView: View {
 
     @MainActor
     private func handleTapAsync(_ server: DiscoveredServer) async {
+        if server.isPairableMacBridge {
+            await startMacPairing(for: server)
+            return
+        }
         if appModel.snapshot?.servers.first(where: { $0.serverId == server.id })?.health == .connected {
             navigateAfterConnect(server)
             return
@@ -512,6 +710,9 @@ struct DiscoveryView: View {
     private func prepareServerForSelection(_ server: DiscoveredServer) async -> (server: DiscoveredServer, canAttemptSSH: Bool) {
         guard server.source != .local else {
             return (server, true)
+        }
+        guard !server.isPairableMacBridge else {
+            return (server, false)
         }
 
         wakingServer = server
@@ -540,7 +741,8 @@ struct DiscoveryView: View {
                     wakeMAC: server.wakeMAC,
                     sshPortForwardingEnabled: server.sshPortForwardingEnabled,
                     preferredConnectionMode: server.preferredConnectionMode,
-                    preferredCodexPort: port
+                    preferredCodexPort: port,
+                    metadata: server.metadata
                 ),
                 true
             )
@@ -557,7 +759,8 @@ struct DiscoveryView: View {
                     hasCodexServer: false,
                     wakeMAC: server.wakeMAC,
                     sshPortForwardingEnabled: server.sshPortForwardingEnabled,
-                    preferredConnectionMode: .ssh
+                    preferredConnectionMode: .ssh,
+                    metadata: server.metadata
                 ),
                 true
             )
@@ -1024,6 +1227,192 @@ struct DiscoveryView: View {
                 }
             }
         )
+    }
+
+    @MainActor
+    private func startMacPairing(for server: DiscoveredServer) async {
+        LLog.info(
+            "pairing",
+            "start nearby mac pairing",
+            fields: [
+                "serverId": server.id,
+                "host": server.hostname,
+                "name": server.name,
+                "metadata": server.metadata
+            ]
+        )
+        do {
+            let status = try await macPairingClient.fetchStatus(for: server)
+            if status.pairingMode == "auto" {
+                LLog.info("pairing", "pairing mode auto", fields: ["serverId": server.id])
+                await requestPairingPayload(for: server, code: nil)
+            } else {
+                LLog.info("pairing", "pairing mode requires code", fields: ["serverId": server.id])
+                pairingTarget = server
+                pairingCode = ""
+            }
+        } catch {
+            LLog.error("pairing", "start nearby mac pairing failed", error: error, fields: ["serverId": server.id])
+            connectError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func requestPairingPayload(for server: DiscoveredServer, code: String?) async {
+        LLog.info(
+            "pairing",
+            "request pairing payload and start proxy",
+            fields: [
+                "serverId": server.id,
+                "host": server.hostname,
+                "hasCode": !(code?.isEmpty ?? true)
+            ]
+        )
+        do {
+            let payload = try await macPairingClient.requestPairingPayload(for: server, code: code)
+            await pairWithPayload(
+                payload,
+                displayName: server.name,
+                host: server.hostname,
+                localPairingMode: server.metadata["pairing_mode"] ?? "code"
+            )
+        } catch {
+            LLog.error("pairing", "pairing payload/proxy flow failed", error: error, fields: ["serverId": server.id])
+            connectError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func pairWithMacCodeManually() async {
+        let host = manualPairingHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let code = manualPairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, !code.isEmpty else {
+            connectError = "Enter both your Mac's IP/hostname and the pairing code."
+            return
+        }
+
+        do {
+            let payload = try await macPairingClient.requestPairingPayload(host: host, code: code)
+            await pairWithPayload(
+                payload,
+                displayName: host,
+                host: host,
+                localPairingMode: "code"
+            )
+            manualPairingHost = ""
+            manualPairingCode = ""
+        } catch {
+            connectError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func pairWithPayload(
+        _ payload: MacBridgePairingPayload,
+        displayName: String,
+        host: String?,
+        localPairingMode: String
+    ) async {
+        do {
+            let currentPhoneIdentity = try? SecureRelayBridgeClient(identityPath: nil).phoneIdentity()
+            let existingPairing = PairedMacStore.record(
+                macDeviceId: payload.macDeviceId,
+                macIdentityPublicKey: payload.macIdentityPublicKey
+            )
+            let trustedReconnect = existingPairing?.matchesCurrentPhoneIdentity(currentPhoneIdentity)
+                ?? false
+            let pairedRecord = PairedMacRecord(
+                displayName: displayName,
+                host: host ?? payload.macDeviceId,
+                relayURL: payload.relay,
+                relaySessionId: payload.sessionId,
+                macDeviceId: payload.macDeviceId,
+                macIdentityPublicKey: payload.macIdentityPublicKey,
+                trustedPhoneDeviceId: currentPhoneIdentity?.phoneDeviceId,
+                trustedPhoneIdentityPublicKey: currentPhoneIdentity?.phoneIdentityPublicKey,
+                pairedAt: Date(),
+                localPairingMode: localPairingMode
+            )
+            PairedMacStore.upsert(pairedRecord)
+            LLog.info(
+                "pairing",
+                "paired mac record saved",
+                fields: [
+                    "macDeviceId": pairedRecord.macDeviceId,
+                    "relayURL": pairedRecord.relayURL,
+                    "relaySessionId": pairedRecord.relaySessionId
+                ]
+            )
+
+            let localProxyURL: String
+            do {
+                localProxyURL = try await appModel.secureRelayProxy.startPairedMacProxy(
+                    relayUrl: pairedRecord.relayURL,
+                    relaySessionId: pairedRecord.relaySessionId,
+                    macDeviceId: pairedRecord.macDeviceId,
+                    macIdentityPublicKey: pairedRecord.macIdentityPublicKey,
+                    trustedReconnect: trustedReconnect
+                )
+            } catch {
+                let shouldRetryBootstrap = trustedReconnect && isTrustedReconnectSignatureError(error)
+                if shouldRetryBootstrap {
+                    LLog.warn(
+                        "pairing",
+                        "trusted reconnect rejected; retrying qr bootstrap",
+                        fields: [
+                            "macDeviceId": pairedRecord.macDeviceId,
+                            "relaySessionId": pairedRecord.relaySessionId
+                        ]
+                    )
+                    localProxyURL = try await appModel.secureRelayProxy.startPairedMacProxy(
+                        relayUrl: pairedRecord.relayURL,
+                        relaySessionId: pairedRecord.relaySessionId,
+                        macDeviceId: pairedRecord.macDeviceId,
+                        macIdentityPublicKey: pairedRecord.macIdentityPublicKey,
+                        trustedReconnect: false
+                    )
+                } else {
+                    throw error
+                }
+            }
+            LLog.info(
+                "pairing",
+                "secure relay proxy started",
+                fields: [
+                    "macDeviceId": pairedRecord.macDeviceId,
+                    "localProxyURL": localProxyURL,
+                    "trustedReconnect": trustedReconnect
+                ]
+            )
+            let proxyServer = DiscoveredServer(
+                id: "paired-mac-\(pairedRecord.macDeviceId)",
+                name: pairedRecord.displayName,
+                hostname: "127.0.0.1",
+                port: nil,
+                codexPorts: [],
+                sshPort: nil,
+                source: .manual,
+                hasCodexServer: true,
+                websocketURL: localProxyURL,
+                preferredConnectionMode: .directCodex,
+                os: "macOS",
+                metadata: [
+                    "paired_mac": "true",
+                    "paired_mac_device_id": pairedRecord.macDeviceId,
+                ]
+            )
+            await connectToServer(proxyServer)
+            pairingSuccessMessage = "Paired with \(displayName) and started a secure bridge connection."
+        } catch {
+            connectError = error.localizedDescription
+        }
+    }
+
+    private func isTrustedReconnectSignatureError(_ error: Error) -> Bool {
+        let message = error.localizedDescription.lowercased()
+        return message.contains("trusted session resolve failed")
+            && (message.contains("invalid_signature")
+                || message.contains("trusted-session resolve signature is invalid"))
     }
 
     private func submitManualEntry() {

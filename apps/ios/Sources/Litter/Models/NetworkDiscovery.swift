@@ -7,6 +7,7 @@ private struct BonjourDiscoverySeed: Hashable {
     let host: String
     let port: UInt16?
     let serviceType: String
+    let txt: [String: String]
 }
 
 struct TailscalePeerIdentity: Equatable {
@@ -133,6 +134,14 @@ final class NetworkDiscovery {
         let scanID = UUID()
         activeScanID = scanID
         tailscaleDiscoveryNotice = nil
+        LLog.info(
+            "discovery",
+            "start scanning",
+            fields: [
+                "scanId": scanID.uuidString,
+                "existingServerCount": servers.count
+            ]
+        )
 
         let cachedNetworkServers = loadCachedNetworkServers()
         let savedNetworkServers = loadSavedNetworkServers()
@@ -172,6 +181,7 @@ final class NetworkDiscovery {
         initialLoadTask = nil
         isScanning = false
         isInitialLoad = false
+        LLog.info("discovery", "stop scanning", fields: ["visibleServerCount": servers.count])
     }
 
     // MARK: - Discovery
@@ -204,6 +214,18 @@ final class NetworkDiscovery {
 
         let seeds = await Self.discoverBonjourSeeds(timeout: 5.0)
         let localIPv4 = Self.localIPv4Address()?.0
+        await MainActor.run { [weak self] in
+            guard let self, self.activeScanID == scanID else { return }
+            LLog.info(
+                "discovery",
+                "bonjour seeds collected",
+                fields: [
+                    "scanId": scanID.uuidString,
+                    "seedCount": seeds.count,
+                    "localIPv4": localIPv4 ?? ""
+                ]
+            )
+        }
         guard !Task.isCancelled else { return }
 
         await MainActor.run { [weak self] in
@@ -214,7 +236,13 @@ final class NetworkDiscovery {
 
         let subscription = store.scanServersWithMdnsContextProgressive(
             seeds: seeds.map {
-                AppMdnsSeed(name: $0.name, host: $0.host, port: $0.port, serviceType: $0.serviceType)
+                AppMdnsSeed(
+                    name: $0.name,
+                    host: $0.host,
+                    port: $0.port,
+                    serviceType: $0.serviceType,
+                    txtRecords: $0.txt.map { AppMdnsTxtRecord(key: $0.key, value: $0.value) }
+                )
             },
             localIpv4: localIPv4
         )
@@ -236,6 +264,15 @@ final class NetworkDiscovery {
             }
         } catch {
             guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                guard let self, self.activeScanID == scanID else { return }
+                LLog.error(
+                    "discovery",
+                    "progressive discovery subscription failed",
+                    error: error,
+                    fields: ["scanId": scanID.uuidString]
+                )
+            }
         }
 
         _ = await tailscaleNoticeProbe
@@ -265,6 +302,17 @@ final class NetworkDiscovery {
         let local = servers.filter { $0.source == .local }
         servers = local + reconcileNetworkServers(resolved + metadataSources)
         saveCachedNetworkServers()
+        let nearbyMacs = servers.filter(\.isPairableMacBridge)
+        LLog.info(
+            "discovery",
+            "applied discovery results",
+            fields: [
+                "resolvedCount": resolved.count,
+                "serverCount": servers.count,
+                "nearbyMacCount": nearbyMacs.count,
+                "nearbyMacHosts": nearbyMacs.map(\.hostname)
+            ]
+        )
     }
 
     private static func discoveredServer(
@@ -276,11 +324,15 @@ final class NetworkDiscovery {
 
         let id = rust.id.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = rust.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return DiscoveredServer(
+        let metadata = Self.metadata(from: rust) ?? existing?.metadata ?? [:]
+        let isPairableBridge = metadata["bridge_transport"] == "local_pairing"
+            || metadata["service_type"] == "_litter-bridge._tcp."
+        let resolvedPort = isPairableBridge ? rust.port : rust.codexPort
+        let server = DiscoveredServer(
             id: id.isEmpty ? "network-\(host)" : id,
             name: name.isEmpty ? host : name,
             hostname: host,
-            port: rust.codexPort,
+            port: resolvedPort,
             codexPorts: rust.codexPorts,
             sshPort: rust.sshPort,
             source: ServerSource(rust.source),
@@ -291,8 +343,22 @@ final class NetworkDiscovery {
             preferredConnectionMode: existing?.preferredConnectionMode,
             preferredCodexPort: existing?.preferredCodexPort,
             os: rust.sshBanner != nil ? rust.os : (rust.os ?? existing?.os),
-            sshBanner: rust.sshBanner ?? existing?.sshBanner
+            sshBanner: rust.sshBanner ?? existing?.sshBanner,
+            metadata: metadata
         )
+        if server.isPairableMacBridge {
+            LLog.info(
+                "discovery",
+                "discovered pairable mac bridge candidate",
+                fields: [
+                    "serverId": server.id,
+                    "host": server.hostname,
+                    "name": server.name,
+                    "metadata": server.metadata
+                ]
+            )
+        }
+        return server
     }
 
     private func reconcileNetworkServers(_ candidates: [DiscoveredServer]) -> [DiscoveredServer] {
@@ -356,9 +422,10 @@ final class NetworkDiscovery {
                     return .manual
                 }
             }(),
-            reachable: server.hasCodexServer || server.sshPort != nil,
+            reachable: server.hasCodexServer || server.sshPort != nil || server.isPairableMacBridge,
             os: server.os,
-            sshBanner: server.sshBanner
+            sshBanner: server.sshBanner,
+            metadataJson: server.metadata.isEmpty ? nil : String(data: (try? JSONSerialization.data(withJSONObject: server.metadata, options: [.sortedKeys])) ?? Data(), encoding: .utf8)
         )
     }
 
@@ -438,6 +505,7 @@ final class NetworkDiscovery {
         UserDefaults.standard.set(data, forKey: cacheKey)
     }
 
+    @MainActor
     private static func discoverBonjourSeeds(timeout: TimeInterval) async -> [BonjourDiscoverySeed] {
         async let ssh = discoverBonjourSeeds(
             serviceType: "_ssh._tcp.",
@@ -447,15 +515,30 @@ final class NetworkDiscovery {
             serviceType: "_codex._tcp.",
             timeout: timeout
         )
-        return Array((await ssh) + (await codex))
+        async let bridge = discoverBonjourSeeds(
+            serviceType: "_litter-bridge._tcp.",
+            timeout: timeout
+        )
+        return Array((await ssh) + (await codex) + (await bridge))
     }
 
+    @MainActor
     private static func discoverBonjourSeeds(
         serviceType: String,
         timeout: TimeInterval
     ) async -> [BonjourDiscoverySeed] {
         let browser = BonjourServiceDiscoverer(serviceType: serviceType)
         return await browser.discover(timeout: timeout)
+    }
+
+    private static func metadata(from rust: AppDiscoveredServer) -> [String: String]? {
+        guard let json = rust.metadataJson,
+              let data = json.data(using: .utf8),
+              let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: String]
+        else {
+            return nil
+        }
+        return decoded
     }
 
     nonisolated static func parseTailscalePeerCandidates(
@@ -759,6 +842,7 @@ private final class BonjourServiceDiscoverer: NSObject, @preconcurrency NetServi
     private struct ServiceRecord {
         let name: String
         let port: UInt16?
+        let txt: [String: String]
     }
 
     private let serviceType: String
@@ -777,7 +861,8 @@ private final class BonjourServiceDiscoverer: NSObject, @preconcurrency NetServi
     }
 
     func discover(timeout: TimeInterval) async -> [BonjourDiscoverySeed] {
-        await withCheckedContinuation { continuation in
+        LLog.info("discovery.bonjour", "browser start", fields: ["serviceType": serviceType, "timeout": timeout])
+        return await withCheckedContinuation { continuation in
             self.continuation = continuation
             browser.delegate = self
             browser.searchForServices(ofType: serviceType, inDomain: "local.")
@@ -793,6 +878,7 @@ private final class BonjourServiceDiscoverer: NSObject, @preconcurrency NetServi
     private func stopAndDrain() {
         guard !requestedStop else { return }
         requestedStop = true
+        LLog.info("discovery.bonjour", "browser stop requested", fields: ["serviceType": serviceType, "pending": pendingServices.count])
         browser.stop()
         if pendingServices.isEmpty {
             finish()
@@ -824,9 +910,19 @@ private final class BonjourServiceDiscoverer: NSObject, @preconcurrency NetServi
                 name: $0.value.name,
                 host: $0.key,
                 port: $0.value.port,
-                serviceType: serviceType
+                serviceType: serviceType,
+                txt: $0.value.txt
             )
         }
+        LLog.info(
+            "discovery.bonjour",
+            "browser finish",
+            fields: [
+                "serviceType": serviceType,
+                "resultCount": discovered.count,
+                "hosts": discovered.map(\.host)
+            ]
+        )
         continuation?.resume(returning: discovered)
         continuation = nil
     }
@@ -834,6 +930,7 @@ private final class BonjourServiceDiscoverer: NSObject, @preconcurrency NetServi
     func netServiceBrowserWillSearch(_ browser: NetServiceBrowser) {}
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
+        LLog.error("discovery.bonjour", "browser did not search", fields: ["serviceType": serviceType, "error": errorDict])
         finish()
     }
 
@@ -847,6 +944,11 @@ private final class BonjourServiceDiscoverer: NSObject, @preconcurrency NetServi
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
         guard !isFinished else { return }
+        LLog.info(
+            "discovery.bonjour",
+            "service found",
+            fields: ["serviceType": serviceType, "serviceName": service.name, "moreComing": moreComing]
+        )
         services.append(service)
         pendingServices.insert(ObjectIdentifier(service))
         service.delegate = self
@@ -860,9 +962,26 @@ private final class BonjourServiceDiscoverer: NSObject, @preconcurrency NetServi
             guard sender.port > 0, sender.port <= Int(UInt16.max) else { return nil }
             return UInt16(sender.port)
         }()
+        let txt: [String: String] = {
+            guard let txtData = sender.txtRecordData() else { return [:] }
+            return NetService.dictionary(fromTXTRecord: txtData).reduce(into: [:]) { partialResult, pair in
+                partialResult[pair.key] = String(data: pair.value, encoding: .utf8) ?? ""
+            }
+        }()
         for address in addresses {
             guard let ip = NetworkDiscovery.ipv4Address(fromSockaddrData: address) else { continue }
-            results[ip] = ServiceRecord(name: sender.name, port: resolvedPort)
+            results[ip] = ServiceRecord(name: sender.name, port: resolvedPort, txt: txt)
+            LLog.info(
+                "discovery.bonjour",
+                "service resolved",
+                fields: [
+                    "serviceType": serviceType,
+                    "serviceName": sender.name,
+                    "host": ip,
+                    "port": resolvedPort ?? 0,
+                    "txt": txt
+                ]
+            )
             break
         }
         if requestedStop, pendingServices.isEmpty {
@@ -872,6 +991,11 @@ private final class BonjourServiceDiscoverer: NSObject, @preconcurrency NetServi
 
     func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
         pendingServices.remove(ObjectIdentifier(sender))
+        LLog.error(
+            "discovery.bonjour",
+            "service did not resolve",
+            fields: ["serviceType": serviceType, "serviceName": sender.name, "error": errorDict]
+        )
         if requestedStop, pendingServices.isEmpty {
             finish()
         }

@@ -5,7 +5,7 @@ struct ConversationComposerContextBarView: View {
     let contextPercent: Int64?
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: LitterTheme.usesRemodexChrome ? 6 : 4) {
             if let primary = rateLimits?.primary {
                 RateLimitBadgeView(
                     label: formatWindowLabel(primary),
@@ -28,9 +28,9 @@ struct ConversationComposerContextBarView: View {
             }
         }
         // Keep the composer chrome height stable even when no badges are available.
-        .frame(maxWidth: .infinity, minHeight: 16, alignment: .trailing)
+        .frame(maxWidth: .infinity, minHeight: LitterTheme.usesRemodexChrome ? 18 : 16, alignment: .trailing)
         .padding(.horizontal, 12)
-        .padding(.top, -2)
+        .padding(.top, LitterTheme.usesRemodexChrome ? 2 : -2)
         .padding(.trailing, 40)
     }
 

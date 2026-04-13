@@ -1,5 +1,5 @@
 //! UniFFI-exported `ReconnectController` — shared reconnection orchestration
-//! consumed by both iOS and Android.
+//! consumed by the iOS app.
 
 use crate::ffi::shared::{shared_mobile_client, shared_runtime};
 use crate::mobile_client::MobileClient;

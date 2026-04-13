@@ -115,7 +115,7 @@ $(shell mkdir -p $(STAMPS))
 	ios ios-sim ios-sim-fast ios-sim-run ios-device ios-device-fast ios-device-run ios-run \
 	ios-build ios-build-sim ios-build-sim-fast ios-build-device ios-build-device-fast verify-ios-project \
 	rust-ios rust-ios-package rust-ios-device-release rust-ios-device-fast rust-ios-sim-fast rust-check rust-test rust-host-dev \
-	bindings bindings-swift sync patch unpatch xcgen ios-frameworks \
+	bindings bindings-swift sync patch unpatch xcgen ios-frameworks ios-local-setup \
 	test test-rust test-ios testflight appstore-release ios-release-prep \
 	clean clean-rust clean-ios rebuild-bindings screenshots screenshots-ios \
 	tui tui-run export-fixture export-fixture-run
@@ -184,6 +184,7 @@ rust-host-dev: rust-check rust-test
 
 help:
 	@printf '%s\n' \
+		'make ios-local-setup     configure local bundle IDs + team ID for this machine' \
 		'make ios                 full iOS package lane + simulator build' \
 		'make ios-sim-fast        fast simulator lane using raw staticlib outputs' \
 		'make ios-sim-run         fast sim build + install + launch on booted simulator; saves logs/profile under artifacts/ios-sim-run' \
@@ -196,6 +197,9 @@ help:
 		'make rust-check          host cargo check for shared crates' \
 		'make rust-test           host cargo test for shared crates' \
 		'make test                run Rust + iOS tests'
+
+ios-local-setup:
+	@./tools/scripts/setup-ios-local.sh
 
 sync: $(STAMP_SYNC)
 $(STAMP_SYNC):

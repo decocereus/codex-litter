@@ -75,7 +75,7 @@ Be the best, don't let yourself down or disappoint me.
   - `apps/ios/Sources/Litter/Views/`
 
 ## Drift Guardrails
-- This repository is iOS-only at the app layer. Keep the monorepo layout, but do not reintroduce Android build or app-specific code.
+- This repository is iOS-only at the app layer. Keep the monorepo layout, but do not reintroduce a second app platform.
 - Before adding new Swift logic, ask whether it belongs in Rust instead.
 - Before adding a new `String` status field to Swift models, ask whether it should be a Rust enum.
 - Before adding a new `AppStore` method, ask whether it is a real composite/store action or should live on `AppClient`.

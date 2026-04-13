@@ -1,7 +1,6 @@
 //! SSH bootstrap client for remote server setup.
 //!
-//! Pure Rust SSH2 client (via `russh`) that replaces platform-specific
-//! SSH libraries (Citadel on iOS, JSch on Android).
+//! Pure Rust SSH client (via `russh`) used by the iOS app.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -34,7 +33,7 @@ fn append_bridge_log(level: LogLevelName, line: &str) {
     log_rust(level, "ssh", "bridge", line.to_string(), None);
 }
 
-fn append_android_debug_log(line: &str) {
+fn append_ssh_debug_log(line: &str) {
     append_bridge_log(LogLevelName::Debug, line);
 }
 
@@ -208,7 +207,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const EXEC_TIMEOUT: Duration = Duration::from_secs(30);
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
 
-/// Default base port for remote Codex server (matches Android).
+/// Default base port for remote Codex server.
 const DEFAULT_REMOTE_PORT: u16 = 8390;
 /// Number of candidate ports to try.
 const PORT_CANDIDATES: u16 = 21;
@@ -578,7 +577,7 @@ impl SshClient {
                     Ok(v) => v,
                     Err(e) => {
                         warn!("port forward accept error: {e}");
-                        append_android_debug_log(&format!(
+                        append_ssh_debug_log(&format!(
                             "ssh_forward_accept_error listen=127.0.0.1:{} remote={}:{} error={}",
                             actual_port, remote_host, remote_port, e
                         ));
@@ -587,7 +586,7 @@ impl SshClient {
                 };
 
                 debug!("port forward: accepted connection from {peer_addr}");
-                append_android_debug_log(&format!(
+                append_ssh_debug_log(&format!(
                     "ssh_forward_accept listen=127.0.0.1:{} remote={}:{} peer={}",
                     actual_port, remote_host, remote_port, peer_addr
                 ));
@@ -610,7 +609,7 @@ impl SshClient {
                             Ok(ch) => ch,
                             Err(e) => {
                                 error!("port forward: open direct-tcpip failed: {e}");
-                                append_android_debug_log(&format!(
+                                append_ssh_debug_log(&format!(
                                     "ssh_forward_direct_tcpip_failed listen=127.0.0.1:{} remote={}:{} peer={} error={}",
                                     actual_port, remote_host, remote_port, peer_addr, e
                                 ));
@@ -619,7 +618,7 @@ impl SshClient {
                         }
                     };
 
-                    append_android_debug_log(&format!(
+                    append_ssh_debug_log(&format!(
                         "ssh_forward_direct_tcpip_opened listen=127.0.0.1:{} remote={}:{} peer={}",
                         actual_port, remote_host, remote_port, peer_addr
                     ));
@@ -635,7 +634,7 @@ impl SshClient {
                     .await
                     {
                         debug!("port forward proxy ended: {e}");
-                        append_android_debug_log(&format!(
+                        append_ssh_debug_log(&format!(
                             "ssh_forward_proxy_error listen=127.0.0.1:{} remote={}:{} peer={} error={}",
                             actual_port, remote_host, remote_port, peer_addr, e
                         ));
@@ -1766,7 +1765,7 @@ async fn proxy_connection(
                 Ok(0) => break,
                 Ok(n) => {
                     if ssh_writer.write_all(&buf[..n]).await.is_err() {
-                        append_android_debug_log(&format!(
+                        append_ssh_debug_log(&format!(
                             "ssh_forward_local_to_remote_write_failed listen=127.0.0.1:{} remote={}:{} peer={}",
                             local_port, local_to_remote_remote_host, remote_port, peer_addr
                         ));
@@ -1774,7 +1773,7 @@ async fn proxy_connection(
                     }
                 }
                 Err(error) => {
-                    append_android_debug_log(&format!(
+                    append_ssh_debug_log(&format!(
                         "ssh_forward_local_read_error listen=127.0.0.1:{} remote={}:{} peer={} error={}",
                         local_port, local_to_remote_remote_host, remote_port, peer_addr, error
                     ));
@@ -1790,7 +1789,7 @@ async fn proxy_connection(
         match ssh_channel.wait().await {
             Some(ChannelMsg::Data { data }) => {
                 if local_write.write_all(&data).await.is_err() {
-                    append_android_debug_log(&format!(
+                    append_ssh_debug_log(&format!(
                         "ssh_forward_local_write_failed listen=127.0.0.1:{} remote={}:{} peer={}",
                         local_port, remote_host, remote_port, peer_addr
                     ));
@@ -1798,21 +1797,21 @@ async fn proxy_connection(
                 }
             }
             Some(ChannelMsg::Eof) => {
-                append_android_debug_log(&format!(
+                append_ssh_debug_log(&format!(
                     "ssh_forward_channel_eof listen=127.0.0.1:{} remote={}:{} peer={}",
                     local_port, remote_host, remote_port, peer_addr
                 ));
                 break;
             }
             Some(ChannelMsg::Close) => {
-                append_android_debug_log(&format!(
+                append_ssh_debug_log(&format!(
                     "ssh_forward_channel_close listen=127.0.0.1:{} remote={}:{} peer={}",
                     local_port, remote_host, remote_port, peer_addr
                 ));
                 break;
             }
             None => {
-                append_android_debug_log(&format!(
+                append_ssh_debug_log(&format!(
                     "ssh_forward_channel_ended listen=127.0.0.1:{} remote={}:{} peer={}",
                     local_port, remote_host, remote_port, peer_addr
                 ));

@@ -28,6 +28,7 @@ final class AppModel {
         let client: AppClient
         let discovery: DiscoveryBridge
         let serverBridge: ServerBridge
+        let secureRelayProxy: SecureRelayProxyBridge
         let ssh: SshBridge
         let reconnectController: ReconnectController
     }
@@ -47,6 +48,7 @@ final class AppModel {
             client: AppClient(),
             discovery: DiscoveryBridge(),
             serverBridge: ServerBridge(),
+            secureRelayProxy: SecureRelayProxyBridge(),
             ssh: SshBridge(),
             reconnectController: rc
         )
@@ -64,6 +66,7 @@ final class AppModel {
     let client: AppClient
     let discovery: DiscoveryBridge
     let serverBridge: ServerBridge
+    let secureRelayProxy: SecureRelayProxyBridge
     let ssh: SshBridge
     let reconnectController: ReconnectController
 
@@ -98,6 +101,7 @@ final class AppModel {
         client: AppClient? = nil,
         discovery: DiscoveryBridge? = nil,
         serverBridge: ServerBridge? = nil,
+        secureRelayProxy: SecureRelayProxyBridge? = nil,
         ssh: SshBridge? = nil,
         reconnectController: ReconnectController? = nil
     ) {
@@ -106,6 +110,7 @@ final class AppModel {
         self.client = client ?? bridges.client
         self.discovery = discovery ?? bridges.discovery
         self.serverBridge = serverBridge ?? bridges.serverBridge
+        self.secureRelayProxy = secureRelayProxy ?? bridges.secureRelayProxy
         self.ssh = ssh ?? bridges.ssh
         self.reconnectController = reconnectController ?? bridges.reconnectController
     }

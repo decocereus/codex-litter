@@ -40,7 +40,7 @@ pub(crate) struct SshReconnectTransport {
     pub(crate) ssh_pid: Option<Arc<StdMutex<Option<u32>>>>,
 }
 
-fn append_android_debug_log(line: &str) {
+fn append_connection_debug_log(line: &str) {
     log_rust(
         LogLevelName::Debug,
         "session.connection",
@@ -86,73 +86,6 @@ fn prepare_in_process_config(
     #[cfg(target_os = "ios")]
     {
         config = prepare_ios_in_process_config(config)?;
-    }
-
-    #[cfg(target_os = "android")]
-    {
-        config = prepare_android_in_process_config(config)?;
-    }
-
-    Ok(config)
-}
-
-#[cfg(target_os = "android")]
-fn prepare_android_in_process_config(
-    mut config: InProcessConfig,
-) -> Result<InProcessConfig, TransportError> {
-    // On Android, HOME and CODEX_HOME should already be set by UniffiInit.nativeBridgeInit().
-    // If codex_home is not set in the config, resolve from CODEX_HOME env var.
-    if config.codex_home.is_none() {
-        if let Ok(codex_home) = std::env::var("CODEX_HOME") {
-            let path = PathBuf::from(&codex_home);
-            std::fs::create_dir_all(&path).map_err(|e| {
-                TransportError::ConnectionFailed(format!(
-                    "failed to create CODEX_HOME {:?}: {e}",
-                    path
-                ))
-            })?;
-            config.codex_home = Some(path);
-        } else if let Ok(home) = std::env::var("HOME") {
-            let path = PathBuf::from(home).join(".codex");
-            std::fs::create_dir_all(&path).map_err(|e| {
-                TransportError::ConnectionFailed(format!(
-                    "failed to create codex home {:?}: {e}",
-                    path
-                ))
-            })?;
-            unsafe {
-                std::env::set_var("CODEX_HOME", &path);
-            }
-            config.codex_home = Some(path);
-        } else {
-            return Err(TransportError::ConnectionFailed(
-                "Could not find home directory".to_string(),
-            ));
-        }
-    }
-
-    if config.working_directory.is_none() {
-        if let Some(ref codex_home) = config.codex_home {
-            let wd = codex_home.join("workspace");
-            std::fs::create_dir_all(&wd).map_err(|e| {
-                TransportError::ConnectionFailed(format!(
-                    "failed to create workspace {:?}: {e}",
-                    wd
-                ))
-            })?;
-            config.working_directory = Some(wd);
-        }
-    }
-
-    // Set up TLS root certificates for Android
-    if let Some(ref codex_home) = config.codex_home {
-        // Android uses system CAs, but set SSL_CERT_FILE if a bundle exists
-        let pem_path = codex_home.join("cacert.pem");
-        if pem_path.exists() {
-            unsafe {
-                std::env::set_var("SSL_CERT_FILE", &pem_path);
-            }
-        }
     }
 
     Ok(config)
@@ -811,7 +744,7 @@ impl ServerSession {
                                     event = client.next_event() => {
                                         let Some(event) = event else {
                                             warn!("remote event stream ended for {}", reconnect_url);
-                append_android_debug_log(&format!(
+                append_connection_debug_log(&format!(
                                                 "event_stream_ended url={}",
                                                 reconnect_url
                                             ));
@@ -829,7 +762,7 @@ impl ServerSession {
                                         };
                                         if let AppServerEvent::Disconnected { message } = &event {
                                             warn!("remote session disconnected for {}: {}", reconnect_url, message);
-                append_android_debug_log(&format!(
+                append_connection_debug_log(&format!(
                                                 "event_disconnected url={} message={}",
                                                 reconnect_url, message
                                             ));
@@ -1100,7 +1033,7 @@ async fn reconnect_remote_client(
     ssh_transport: Option<&SshReconnectTransport>,
 ) -> bool {
     for attempt in 1..=REMOTE_RECONNECT_MAX_ATTEMPTS {
-        append_android_debug_log(&format!(
+        append_connection_debug_log(&format!(
             "reconnect_start url={} attempt={}/{}",
             websocket_url, attempt, REMOTE_RECONNECT_MAX_ATTEMPTS
         ));
@@ -1134,7 +1067,7 @@ async fn reconnect_remote_client(
                     "remote server session reconnected: {} (attempt {attempt}/{})",
                     websocket_url, REMOTE_RECONNECT_MAX_ATTEMPTS
                 );
-                append_android_debug_log(&format!(
+                append_connection_debug_log(&format!(
                     "reconnect_success url={} attempt={}/{}",
                     websocket_url, attempt, REMOTE_RECONNECT_MAX_ATTEMPTS
                 ));
@@ -1151,7 +1084,7 @@ async fn reconnect_remote_client(
                                     "remote server session reconnected after ssh rebootstrap: {} (attempt {attempt}/{})",
                                     websocket_url, REMOTE_RECONNECT_MAX_ATTEMPTS
                                 );
-                                append_android_debug_log(&format!(
+                                append_connection_debug_log(&format!(
                                     "reconnect_success url={} attempt={}/{} mode=ssh_rebootstrap",
                                     websocket_url, attempt, REMOTE_RECONNECT_MAX_ATTEMPTS
                                 ));
@@ -1170,7 +1103,7 @@ async fn reconnect_remote_client(
                     "remote server reconnect failed: {} (attempt {attempt}/{}) - {}",
                     websocket_url, REMOTE_RECONNECT_MAX_ATTEMPTS, error
                 );
-                append_android_debug_log(&format!(
+                append_connection_debug_log(&format!(
                     "reconnect_failed url={} attempt={}/{} error={}",
                     websocket_url, attempt, REMOTE_RECONNECT_MAX_ATTEMPTS, error
                 ));
@@ -1303,7 +1236,7 @@ fn route_app_server_event(
         }
         AppServerEvent::ServerRequest(request) => {
             info!("remote event server request {:?}", request);
-            append_android_debug_log(&format!("server_request={request:?}"));
+            append_connection_debug_log(&format!("server_request={request:?}"));
             let _ = event_tx.send(ServerEvent::Request(request.clone()));
         }
         AppServerEvent::Lagged { skipped } => {
@@ -1311,7 +1244,7 @@ fn route_app_server_event(
         }
         AppServerEvent::Disconnected { message } => {
             warn!("event: disconnected: {message}");
-            append_android_debug_log(&format!("disconnected={message}"));
+            append_connection_debug_log(&format!("disconnected={message}"));
             let _ = health_tx.send(ConnectionHealth::Disconnected);
         }
     }

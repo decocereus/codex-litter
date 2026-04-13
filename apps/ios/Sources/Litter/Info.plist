@@ -55,6 +55,7 @@
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_codex._tcp</string>
+		<string>_litter-bridge._tcp</string>
 		<string>_ssh._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
@@ -73,6 +74,16 @@
 		<string>BerkeleyMono-Bold.otf</string>
 		<string>BerkeleyMono-Oblique.otf</string>
 		<string>BerkeleyMono-Bold-Oblique.otf</string>
+		<string>Geist-Regular.ttf</string>
+		<string>Geist-Medium.ttf</string>
+		<string>Geist-SemiBold.ttf</string>
+		<string>Geist-Bold.ttf</string>
+		<string>GeistMono-Regular.ttf</string>
+		<string>GeistMono-Medium.ttf</string>
+		<string>GeistMono-Bold.ttf</string>
+		<string>JetBrainsMono-Regular.ttf</string>
+		<string>JetBrainsMono-Medium.ttf</string>
+		<string>JetBrainsMono-Bold.ttf</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>

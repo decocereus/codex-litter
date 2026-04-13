@@ -1,6 +1,6 @@
-//! FFI layer for iOS and Android consumption.
+//! FFI layer for iOS consumption.
 //!
-//! Uses UniFFI proc-macro approach for automatic Swift/Kotlin binding generation.
+//! Uses UniFFI proc-macro scaffolding for Swift binding generation.
 //! The scaffolding macro is invoked in lib.rs; this module holds additional
 //! FFI helper types and exported functions.
 
@@ -11,6 +11,8 @@ mod errors;
 mod parser;
 mod reconnect;
 mod remote_path;
+mod secure_bridge;
+mod secure_bridge_proxy;
 pub(crate) mod shared;
 mod ssh;
 
@@ -21,6 +23,8 @@ pub use errors::ClientError;
 pub use parser::MessageParser;
 pub use reconnect::ReconnectController;
 pub use remote_path::RemotePath;
+pub use secure_bridge::{AppPhoneIdentityRecord, AppSecureApplicationPayloadRecord, SecureRelayBridgeClient};
+pub use secure_bridge_proxy::SecureRelayProxyBridge;
 pub use ssh::{AppSshConnectionResult, SshBridge};
 
 // Re-export reconnect boundary types so UniFFI can discover them.

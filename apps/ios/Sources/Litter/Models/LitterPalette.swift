@@ -43,7 +43,7 @@ enum LitterPalette {
     /// Whether the user prefers monospaced font. Reads from the shared App Group.
     static var isMono: Bool {
         let raw = shared?.string(forKey: "fontFamily") ?? "mono"
-        return raw == "mono"
+        return raw == "mono" || raw == "geistMono" || raw == "jetBrainsMono"
     }
 
     /// Font design matching the user's font preference.
