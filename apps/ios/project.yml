@@ -20,7 +20,7 @@ settings:
     "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]": "$(inherited) $(PROJECT_DIR)/GeneratedRust/ios-device"
     "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]": "$(inherited) $(PROJECT_DIR)/GeneratedRust/ios-sim"
     IPHONEOS_DEPLOYMENT_TARGET: "18.0"
-    DEVELOPMENT_TEAM: UH66Q8ZAYG
+    DEVELOPMENT_TEAM: 9KHN5Q5S8R
 
 packages:
   Hairball:
@@ -36,7 +36,7 @@ targets:
       properties:
         aps-environment: production
         com.apple.security.application-groups:
-          - group.com.sigkitten.litter
+          - group.com.amartyasingh.litter
     attributes:
       SystemCapabilities:
         com.apple.BackgroundModes:
@@ -87,7 +87,7 @@ targets:
         embed: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sigkitten.litter
+        PRODUCT_BUNDLE_IDENTIFIER: com.amartyasingh.litter
         INFOPLIST_FILE: Sources/Litter/Info.plist
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Litter/Bridge/codex_bridge_objc.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -114,7 +114,7 @@ targets:
       path: Sources/LitterLiveActivity/LitterLiveActivity.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.com.sigkitten.litter
+          - group.com.amartyasingh.litter
     sources:
       - path: Sources/LitterLiveActivity
       - path: Sources/Litter/Models/CodexTurnAttributes.swift
@@ -126,7 +126,7 @@ targets:
       - path: Sources/LitterLiveActivity/Assets.xcassets
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sigkitten.litter.liveactivity
+        PRODUCT_BUNDLE_IDENTIFIER: com.amartyasingh.litter.liveactivity
         INFOPLIST_FILE: Sources/LitterLiveActivity/Info.plist
       configs:
         Debug:

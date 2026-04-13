@@ -1,8 +1,8 @@
 # CI Helpers (Planned)
 
-Pipeline helper scripts and templates for iOS, Android, and Rust bridge.
+Pipeline helper scripts and templates for iOS and the shared Rust bridge.
 
 Current workflow files:
-- `.github/workflows/ios.yml`
-- `.github/workflows/android.yml`
-- `.github/workflows/rust-bridge.yml`
+- `.github/workflows/mobile-ci.yml`
+- `.github/workflows/ios-testflight.yml`
+- `.github/workflows/ios-app-store-release.yml`
